@@ -1,5 +1,16 @@
 import { startBot } from './bot.js';
 import chalk from 'chalk';
+import http from 'http';
+
+// Servidor "Fantasma" para mantener a Render contento (Web Service)
+const port = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.write('AleAgent Status: ONLINE 24/7');
+    res.end();
+}).listen(port, () => {
+    console.log(chalk.green(`🌐 Servidor Web escuchando en puerto ${port} (Requerimiento de Render)`));
+});
 
 console.log(chalk.blue.bold("\n⚡ Iniciando secuencias de arranque...\n"));
 
