@@ -6,7 +6,7 @@ const MAX_ITERATIONS = 5;
 
 export async function processUserMessage(userId: number, text: string): Promise<string> {
     // Guarda el mensaje del usuario en la base de datos
-    saveMessage(userId, {
+    await saveMessage(userId, {
         role: 'user',
         content: text,
         tool_calls: null,
@@ -18,14 +18,14 @@ export async function processUserMessage(userId: number, text: string): Promise<
     while (iterations < MAX_ITERATIONS) {
         iterations++;
 
-        const history = getHistory(userId, 10);
+        const history = await getHistory(userId, 10);
         const messages = formatMessages(history);
 
         console.log(`[Agente] Iteración ${iterations}, consultando al LLM...`);
         const responseMessage = await getCompletion(messages);
 
         // Guarda la respuesta del asistente (ya sea un mensaje o invocación de herramientas)
-        saveMessage(userId, {
+        await saveMessage(userId, {
             role: 'assistant',
             content: responseMessage.content || null,
             tool_calls: responseMessage.tool_calls ? JSON.stringify(responseMessage.tool_calls) : null,
@@ -48,7 +48,7 @@ export async function processUserMessage(userId: number, text: string): Promise<
                 }
 
                 // Guardar el resultado de la herramienta en el historial
-                saveMessage(userId, {
+                await saveMessage(userId, {
                     role: 'tool',
                     content: resultText,
                     tool_calls: null,
@@ -67,3 +67,4 @@ export async function processUserMessage(userId: number, text: string): Promise<
 
     return "Se ha alcanzado el límite interno de pensamientos del agente. Por favor formula tu solicitud nuevamente.";
 }
+

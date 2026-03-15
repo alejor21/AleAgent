@@ -1,52 +1,107 @@
-import Database from 'better-sqlite3';
+import { initializeApp, cert, getApps } from 'firebase-admin/app';
+import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { config } from './config.js';
+import fs from 'fs';
+import path from 'path';
 
-export const db = new Database(config.dbPath);
+import Database from 'better-sqlite3';
 
-// Inicializar el esquema de la base de datos
-db.pragma('journal_mode = WAL');
+// Determinar si usamos Firebase o SQLite ( fallback )
+const useFirebase = fs.existsSync(path.resolve(config.googleCredentials));
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    role TEXT NOT NULL,
-    content TEXT,
-    tool_calls TEXT,
-    tool_call_id TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  );
-`);
+let db: any;
+let sqliteDb: any;
+
+if (useFirebase) {
+    console.log('🚀 Conectando a Firebase Cloud Firestore...');
+    if (!getApps().length) {
+        initializeApp({
+            credential: cert(path.resolve(config.googleCredentials))
+        });
+    }
+    db = getFirestore();
+} else {
+    console.log('⚠️ No se encontró service-account.json. Usando SQLite local por ahora.');
+    sqliteDb = new Database(config.dbPath);
+    sqliteDb.pragma('journal_mode = WAL');
+    sqliteDb.exec(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT,
+        tool_calls TEXT,
+        tool_call_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+}
+
 
 export interface MessageRow {
     role: string;
     content: string | null;
-    tool_calls: string | null;
-    tool_call_id: string | null;
+    tool_calls?: string | null;
+    tool_call_id?: string | null;
+    created_at?: any;
 }
 
-export function saveMessage(userId: number, message: MessageRow) {
-    const stmt = db.prepare(`
-        INSERT INTO messages (user_id, role, content, tool_calls, tool_call_id)
-        VALUES (?, ?, ?, ?, ?)
-    `);
-    stmt.run(
-        userId,
-        message.role,
-        message.content,
-        message.tool_calls,
-        message.tool_call_id
-    );
+export async function saveMessage(userId: number, message: MessageRow) {
+    if (useFirebase) {
+        const docRef = db.collection('chats').doc(userId.toString()).collection('messages').doc();
+        await docRef.set({
+            role: message.role,
+            content: message.content || null,
+            tool_calls: message.tool_calls || null,
+            tool_call_id: message.tool_call_id || null,
+            created_at: FieldValue.serverTimestamp()
+        });
+    } else {
+        const stmt = sqliteDb.prepare(`
+            INSERT INTO messages (user_id, role, content, tool_calls, tool_call_id)
+            VALUES (?, ?, ?, ?, ?)
+        `);
+        stmt.run(
+            userId,
+            message.role,
+            message.content,
+            message.tool_calls,
+            message.tool_call_id
+        );
+    }
 }
 
-export function getHistory(userId: number, limit: number = 50): MessageRow[] {
-    const stmt = db.prepare(`
-        SELECT role, content, tool_calls, tool_call_id 
-        FROM messages 
-        WHERE user_id = ? 
-        ORDER BY id DESC 
-        LIMIT ?
-    `);
-    const results = stmt.all(userId, limit) as MessageRow[];
-    return results.reverse(); // Devolver cronológico para el LLM
+export async function getHistory(userId: number, limit: number = 50): Promise<MessageRow[]> {
+    if (useFirebase) {
+        const snapshot = await db.collection('chats')
+            .doc(userId.toString())
+            .collection('messages')
+            .orderBy('created_at', 'desc')
+            .limit(limit)
+            .get();
+
+        const messages: MessageRow[] = [];
+        snapshot.forEach((doc: any) => {
+            const data = doc.data();
+            messages.push({
+                role: data.role,
+                content: data.content,
+                tool_calls: data.tool_calls,
+                tool_call_id: data.tool_call_id,
+                created_at: data.created_at
+            });
+        });
+
+        return messages.reverse();
+    } else {
+        const stmt = sqliteDb.prepare(`
+            SELECT role, content, tool_calls, tool_call_id 
+            FROM messages 
+            WHERE user_id = ? 
+            ORDER BY id DESC 
+            LIMIT ?
+        `);
+        const results = stmt.all(userId, limit) as MessageRow[];
+        return results.reverse();
+    }
 }
