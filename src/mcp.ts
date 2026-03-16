@@ -41,7 +41,12 @@ export async function initMcpClient(allowedDirectory: string) {
     if (mcpClient) return;
 
     try {
-        // Por ahora mantenemos el filesystem como MCP principal
+        if (allowedDirectory === 'cloud') {
+            console.log(`[MCP] Cargando únicamente herramientas internas en la nube.`);
+            return; // En la nube no conectamos el filesystem local
+        }
+
+        // Por ahora mantenemos el filesystem como MCP principal en entornos locales
         const transport = new StdioClientTransport({
             command: "npx",
             args: ["-y", "@modelcontextprotocol/server-filesystem", allowedDirectory]
@@ -72,6 +77,7 @@ export async function initMcpClient(allowedDirectory: string) {
         console.error("[MCP] Error al inicializar cliente:", error);
     }
 }
+
 
 export function getMcpTools() {
     return [...internalTools, ...mcpToolsCache];

@@ -6,17 +6,26 @@ import path from 'path';
 
 import Database from 'better-sqlite3';
 
+// Determinar la ruta de credenciales, soportando Render de forma nativa
+const secretRenderPath = '/etc/secrets/service-account.json';
+const localPath = config.googleCredentials ? path.resolve(config.googleCredentials) : '';
+
+let finalCredsPath = localPath;
+if (fs.existsSync(secretRenderPath)) {
+    finalCredsPath = secretRenderPath; // Render inyecta esto automáticamente aquí
+}
+
 // Determinar si usamos Firebase o SQLite ( fallback )
-const useFirebase = fs.existsSync(path.resolve(config.googleCredentials));
+const useFirebase = Boolean(finalCredsPath && fs.existsSync(finalCredsPath));
 
 let db: any;
 let sqliteDb: any;
 
 if (useFirebase) {
-    console.log('🚀 Conectando a Firebase Cloud Firestore...');
+    console.log(`🚀 Conectando a Firebase Cloud Firestore usando credentials en: ${finalCredsPath}`);
     if (!getApps().length) {
         initializeApp({
-            credential: cert(path.resolve(config.googleCredentials))
+            credential: cert(finalCredsPath)
         });
     }
     db = getFirestore();

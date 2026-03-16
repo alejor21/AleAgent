@@ -21,9 +21,18 @@ export async function startBot() {
 
     const bot = new Bot<MyContext>(config.telegramBotToken);
 
-    // Inicializar servidor y cliente MCP (apuntando al disco duro local)
-    console.log(chalk.cyan(">> Conectando Sistemas MCP..."));
-    await initMcpClient(os.homedir());
+    // Detectar si estamos en la nube (Render) para no usar el filesystem MCP local
+    const isCloudEnv = process.env.RENDER || process.env.NODE_ENV === 'production';
+
+    if (isCloudEnv) {
+        console.log(chalk.cyan(">> Modo Nube: MCP local deshabilitado (no es necesario en Render)."));
+        // Igual inicializamos para que carguen las tools como "web_search", pero pasamos 'cloud'
+        await initMcpClient('cloud');
+    } else {
+        console.log(chalk.cyan(">> Conectando Sistemas MCP..."));
+        await initMcpClient(os.homedir());
+    }
+
 
     // Activar plugin de archivos de Grammy
     bot.api.config.use(hydrateFiles(bot.token));
